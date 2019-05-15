@@ -76,8 +76,8 @@ SOFTWARE.
 #include "eqcuda.hpp"
 #include "sm_32_intrinsics.h"
 
-#define WN	200
-#define WK	9
+#define WN	96
+#define WK	5
 #define NDIGITS		(WK+1)
 #define DIGITBITS	(WN/(NDIGITS))
 #define PROOFSIZE (1<<WK)
@@ -86,7 +86,7 @@ SOFTWARE.
 #define HASHESPERBLAKE (512/WN)
 #define HASHOUT (HASHESPERBLAKE*WN/8)
 #define NBLOCKS ((NHASHES + HASHESPERBLAKE - 1) / HASHESPERBLAKE)
-#define BUCKBITS (DIGITBITS - RB)
+#define BUCKBITS (DIGITBITS - RB) // 12
 #define NBUCKETS (1 << BUCKBITS)
 #define BUCKMASK (NBUCKETS - 1)
 #define SLOTBITS (RB + 2)
@@ -468,7 +468,7 @@ __global__ void digit_first(equi<RB, SM>* eq, u32 nonce)
 
 	u32 bexor = __byte_perm(v32[0], 0, 0x4012); // first 20 bits
 	u32 bucketid;
-	asm("bfe.u32 %0, %1, 12, 12;" : "=r"(bucketid) : "r"(bexor));
+	asm("bfe.u32 %0, %1, 12, 12;" : "=r"(bucketid) : "r"(bexor)); // first 12  bits
 	u32 slotp = atomicAdd(&eq->edata.nslots0[bucketid], 1);
 	if (slotp < RB8_NSLOTS)
 	{
@@ -487,7 +487,69 @@ __global__ void digit_first(equi<RB, SM>* eq, u32 nonce)
 		tt.w = block << 1;
 		*(uint4*)(&s->hash[4]) = tt;
 	}
+    if (block == 0)
+        printf("bucketid %u\n", bucketid)
 
+	bexor = __byte_perm(v32[6], 0, 0x0123);
+	asm("bfe.u32 %0, %1, 12, 12;" : "=r"(bucketid) : "r"(bexor));
+	slotp = atomicAdd(&eq->edata.nslots0[bucketid], 1);
+	if (slotp < RB8_NSLOTS)
+	{
+		slot* s = &eq->round0trees[bucketid][slotp];
+
+		uint4 tt;
+		tt.x = __byte_perm(v32[6], v32[7], 0x2345);
+		tt.y = __byte_perm(v32[7], v32[8], 0x2345);
+		tt.z = __byte_perm(v32[8], v32[9], 0x2345);
+		tt.w = __byte_perm(v32[9], v32[10], 0x2345);
+		*(uint4*)(&s->hash[0]) = tt;
+
+		tt.x = __byte_perm(v32[10], v32[11], 0x2345);
+		tt.y = __byte_perm(v32[11], v32[12], 0x2345);
+		tt.z = 0;
+		tt.w = (block << 1) + 1;
+		*(uint4*)(&s->hash[4]) = tt;
+	}
+	bexor = __byte_perm(v32[6], 0, 0x0123);
+	asm("bfe.u32 %0, %1, 12, 12;" : "=r"(bucketid) : "r"(bexor));
+	slotp = atomicAdd(&eq->edata.nslots0[bucketid], 1);
+	if (slotp < RB8_NSLOTS)
+	{
+		slot* s = &eq->round0trees[bucketid][slotp];
+
+		uint4 tt;
+		tt.x = __byte_perm(v32[6], v32[7], 0x2345);
+		tt.y = __byte_perm(v32[7], v32[8], 0x2345);
+		tt.z = __byte_perm(v32[8], v32[9], 0x2345);
+		tt.w = __byte_perm(v32[9], v32[10], 0x2345);
+		*(uint4*)(&s->hash[0]) = tt;
+
+		tt.x = __byte_perm(v32[10], v32[11], 0x2345);
+		tt.y = __byte_perm(v32[11], v32[12], 0x2345);
+		tt.z = 0;
+		tt.w = (block << 1) + 1;
+		*(uint4*)(&s->hash[4]) = tt;
+	}
+	bexor = __byte_perm(v32[6], 0, 0x0123);
+	asm("bfe.u32 %0, %1, 12, 12;" : "=r"(bucketid) : "r"(bexor));
+	slotp = atomicAdd(&eq->edata.nslots0[bucketid], 1);
+	if (slotp < RB8_NSLOTS)
+	{
+		slot* s = &eq->round0trees[bucketid][slotp];
+
+		uint4 tt;
+		tt.x = __byte_perm(v32[6], v32[7], 0x2345);
+		tt.y = __byte_perm(v32[7], v32[8], 0x2345);
+		tt.z = __byte_perm(v32[8], v32[9], 0x2345);
+		tt.w = __byte_perm(v32[9], v32[10], 0x2345);
+		*(uint4*)(&s->hash[0]) = tt;
+
+		tt.x = __byte_perm(v32[10], v32[11], 0x2345);
+		tt.y = __byte_perm(v32[11], v32[12], 0x2345);
+		tt.z = 0;
+		tt.w = (block << 1) + 1;
+		*(uint4*)(&s->hash[4]) = tt;
+	}
 	bexor = __byte_perm(v32[6], 0, 0x0123);
 	asm("bfe.u32 %0, %1, 12, 12;" : "=r"(bucketid) : "r"(bexor));
 	slotp = atomicAdd(&eq->edata.nslots0[bucketid], 1);
@@ -2081,14 +2143,6 @@ __host__ void eq_cuda_context<RB, SM, SSM, THREADS, PACKER>::solve(const char *t
 	if (cancelf()) return;
 
 	digit_4<RB, SM, SSM, PACKER, 4 * NRESTS, THREADS> << <blocks, THREADS >> >(device_eq);
-
-	digit_5<RB, SM, SSM, PACKER, 4 * NRESTS, THREADS> << <blocks, THREADS >> >(device_eq);
-
-	digit_6<RB, SM, SSM - 1, PACKER, 3 * NRESTS> << <blocks, NRESTS >> >(device_eq);
-
-	digit_7<RB, SM, SSM - 1, PACKER, 3 * NRESTS> << <blocks, NRESTS >> >(device_eq);
-
-	digit_8<RB, SM, SSM - 1, PACKER, 3 * NRESTS> << <blocks, NRESTS >> >(device_eq);
 
 	digit_last_wdc<RB, SM, SSM - 3, 2, PACKER, 64, 8, 4> << <4096, 256 / 2 >> >(device_eq);
 
